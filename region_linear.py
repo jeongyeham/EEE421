@@ -1,3 +1,4 @@
+import joblib
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
@@ -5,9 +6,13 @@ from sklearn.metrics import r2_score
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+def region_model_save(model_path, model):
+    joblib.dump(model, model_path)
+
 # 加载数据
-data = pd.read_csv('C:/Users/25436/Desktop/EEE421/project/data/Training data.csv')
-feature_columns = ['FLOOR_LEVEL', 'FLOOR_ENERGY_EFF', 'WINDOWS_ENERGY_EFF',
+data = pd.read_csv('./Training data.csv')
+feature_columns = ['FLOOR_LEVEL', 'FLOOR_ENERGY_EFF', 'GLAZED_TYPE',
                    'WALLS_ENERGY_EFF', 'ROOF_ENERGY_EFF', 'MAINHEAT_ENERGY_EFF',
                    'MAINHEATC_ENERGY_EFF', 'LIGHTING_ENERGY_EFF']
 target_column = 'ENERGY_CONSUMPTION_CURRENT'
@@ -73,8 +78,16 @@ plt.ylabel('Predicted Energy Consumption')
 plt.title('Fit of the Regional Linear Models')
 plt.legend()
 plt.show()
+region_model_save('./model.joblib', model)
 
 # 输出
 print(f"R^2: {r_squared}")
 for i, expr in enumerate(linear_expressions, start=1):
     print(f"Region {i}: {expr}")
+
+
+def region_model_load(model_path):
+    return joblib.load(model_path)
+
+def region_model_predict(feature_names, model):
+    return model.predict(feature_names)
