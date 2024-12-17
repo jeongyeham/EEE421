@@ -1,3 +1,25 @@
+# MIT License
+#
+# Copyright (c) 2024 Yihan Ding, Dingyue Hu, Yichao Yang, Bohan Cao.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import joblib
 import pandas as pd
 from pymoo.core.problem import Problem
@@ -7,28 +29,57 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
 import plotly.express as px
 
+# Costs associated with different energy efficiency improvements
 wall_insulation_costs = [1000, 5000, 12000, 14000]
 heating_system_costs = [2000, 5000, 6500, 7000]
 glazing_costs = [1500, 2000, 2500, 4000]
 pv_costs = [0, 800, 1000, 1200, 1600, 2400, 2800, 3600, 4000]
 
+# Lifetimes for each system
 wall_insulation_lifetime = 30
 heating_system_lifetime = 16
 glazing_lifetime = 20
 pv_lifetime = 10
 
-Discount_rate = 0.05  # 折损率
-Tariff = 0.25  # 电价
+# Discount rate and electricity tariff for economic calculations
+Discount_rate = 0.05
+Tariff = 0.25
 
 
 def region_model_load(model_path):
+    """
+    Load the predictive model from the specified file path.
+
+    Parameters:
+    - model_path: Path to the saved model file.
+
+    Returns:
+    - Loaded model object.
+    """
     return joblib.load(model_path)
 
+
 def region_model_predict(feature_names, model):
+    """
+    Predict energy consumption based on the input features.
+
+    Parameters:
+    - feature_names: A DataFrame of feature values.
+    - model: The predictive model.
+
+    Returns:
+    - Predicted value for the input data.
+    """
     return model.predict(feature_names)
 
-# current_energy_consumption prediction
+
 def predict_current_energy_consumption():
+    """
+    Predict the current energy consumption for the first building in the dataset.
+
+    Returns:
+    - Current energy consumption as a single float value.
+    """
     model = region_model_load('./model.joblib')
     feature_columns = ['FLOOR_LEVEL', 'FLOOR_ENERGY_EFF', 'GLAZED_TYPE',
                        'WALLS_ENERGY_EFF', 'ROOF_ENERGY_EFF', 'MAINHEAT_ENERGY_EFF',
@@ -36,22 +87,22 @@ def predict_current_energy_consumption():
     all_feature_data = pd.read_csv('./group_data.csv')
     X = pd.DataFrame(all_feature_data.iloc[0, all_feature_data.columns.get_indexer(feature_columns)]).T
     current_energy_consumption = region_model_predict(X, model).item()
-    return current_energy_consumption  # 609
+    return current_energy_consumption
 
 
 def calculate_epv(kWp, latitude, orientation, tilt, annual_solar_radiation):
     """
-    Calculate the annual electricity production of a PV system.
+    Calculate the annual electricity production of a photovoltaic (PV) system.
 
     Parameters:
-    - kWp: Installed peak power of the PV module (kWp)
-    - latitude: Latitude of the location (degrees)
-    - orientation: Orientation of the PV array (degrees from North, e.g., South is 180)
-    - tilt: Tilt angle of the PV array (degrees from horizontal)
-    - annual_solar_radiation: Annual solar radiation (kWh/m²)
+    - kWp: Installed peak power of the PV module (kWp).
+    - latitude: Latitude of the location (degrees).
+    - orientation: Orientation of the PV array (degrees from North).
+    - tilt: Tilt angle of the PV array (degrees from horizontal).
+    - annual_solar_radiation: Annual solar radiation (kWh/m²).
 
     Returns:
-    - Epv: Annual electricity production (kWh)
+    - Annual electricity production (kWh).
     """
     # Constants for calculation
     k1 = 26.3
@@ -67,36 +118,32 @@ def calculate_epv(kWp, latitude, orientation, tilt, annual_solar_radiation):
     # Convert orientation to radians
     orientation_rad = math.radians(orientation)
 
-    # Calculate A, B, C for converting from horizontal to vertical or inclined solar flux
+    # Factors for converting horizontal to inclined solar flux
     A = (k1 * math.sin(tilt / 2) ** 2 + k2 * math.sin(tilt / 2) + k3 * math.sin(tilt / 2))
     B = (k4 * math.sin(tilt / 2) ** 2 + k5 * math.sin(tilt / 2) + k6 * math.sin(tilt / 2))
     C = (k7 * math.sin(tilt / 2) ** 2 + k8 * math.sin(tilt / 2) + k9 * math.sin(tilt / 2) + 1)
 
-    # Calculate the factor for converting from horizontal to vertical or inclined solar flux
     R_horizontal_to_inclined = A * math.cos(latitude - math.radians(180)) + B * math.cos(
         2 * (latitude - math.radians(180))) + C
 
-    # Calculate the annual electricity production
+    # Annual electricity production
     Epv = 0.8 * kWp * annual_solar_radiation * R_horizontal_to_inclined
 
     return Epv
 
 
-
-
-
 def calculate_annual_solar_radiation(region, orientation):
     """
-    Calculate the annual solar radiation for a given region and orientation.
+    Calculate the annual solar radiation for a given region and surface orientation.
 
     Parameters:
-    - region: The region number as per Table U6 in SAP 10.2
-    - orientation: The orientation of the surface (N, NE, E, SE, S, SW, W, NW)
+    - region: The region number corresponding to solar radiation data (e.g., from SAP Table U3).
+    - orientation: The orientation of the surface (N, NE, E, SE, S, SW, W, NW).
 
     Returns:
-    - annual_solar_radiation: Annual solar radiation (kWh/m²)
+    - annual_solar_radiation: The annual solar radiation (kWh/m²).
     """
-    # Solar radiation data for each month and region (from Table U3)
+    # Solar radiation data for each region, from SAP Table U3
     solar_radiation_data = {
         1: [26, 54, 96, 150, 192, 200, 189, 157, 115, 66, 33, 21],  # UK average
         2: [30, 56, 98, 157, 195, 217, 203, 173, 127, 73, 39, 24],  # Thames
@@ -122,10 +169,10 @@ def calculate_annual_solar_radiation(region, orientation):
         22: [24, 52, 96, 155, 201, 198, 183, 150, 107, 61, 30, 18]  # Northern Ireland
     }
 
-    # Calculate the annual solar radiation for the given region and orientation
+    # Calculate the average solar radiation for the given region
     annual_solar_radiation = sum(solar_radiation_data[region]) / 12  # Average monthly solar radiation
 
-    # Adjust for orientation (this is a simplified approach and may need to be adjusted based on the specific orientation)
+    # Adjust for surface orientation (simplified approach)
     orientation_factors = {
         'N': 0.9,
         'NE': 0.95,
@@ -137,75 +184,91 @@ def calculate_annual_solar_radiation(region, orientation):
         'NW': 0.95
     }
 
+    # Adjust the solar radiation based on orientation
     annual_solar_radiation *= orientation_factors[orientation]
 
     return annual_solar_radiation
 
 
 class EnergyCostOptimization(Problem):
-    def __init__(self):
-        super().__init__(n_var=4,  # 决策变量数量
-                         n_obj=2,  # 目标函数数量 (成本和能耗)
-                         n_constr=0,  # 约束数量
-                         xl=np.array([3, 1, 0, 0]),  # 决策变量下界
-                         xu=np.array([3, 3, 3, 7]))  # 决策变量上界
+    """
+    This class defines an energy cost optimization problem using NSGA-II.
 
-        self.model = region_model_load('./model.joblib')
+    It optimizes the energy consumption and the net present value (NPV) of improvements
+    to energy efficiency systems in a building, such as insulation, heating, glazing, and solar panels.
+    """
+
+    def __init__(self):
+        """
+        Initializes the optimization problem with specific variables and objectives.
+        """
+        super().__init__(n_var=4,  # Number of decision variables
+                         n_obj=2,  # Number of objectives (cost and energy consumption)
+                         n_constr=0,  # Number of constraints
+                         xl=np.array([3, 1, 0, 0]),  # Lower bounds of decision variables
+                         xu=np.array([3, 3, 3, 7]))  # Upper bounds of decision variables
+
+        self.model = region_model_load('./model.joblib')  # Load the predictive model
         self.feature_columns = ['FLOOR_LEVEL', 'FLOOR_ENERGY_EFF', 'GLAZED_TYPE',
                                 'WALLS_ENERGY_EFF', 'ROOF_ENERGY_EFF', 'MAINHEAT_ENERGY_EFF',
-                                'MAINHEATC_ENERGY_EFF', 'LIGHTING_ENERGY_EFF']
-        self.all_feature_data = pd.read_csv('./group_data.csv')
-        self.X = pd.DataFrame(self.all_feature_data.iloc[0, self.all_feature_data.columns.get_indexer(self.feature_columns)]).T
-        self.current_energy_consumption = predict_current_energy_consumption()
+                                'MAINHEATC_ENERGY_EFF', 'LIGHTING_ENERGY_EFF']  # Feature columns used in prediction
+        self.all_feature_data = pd.read_csv('./group_data.csv')  # Load the dataset
+        self.X = pd.DataFrame(self.all_feature_data.iloc[0, self.all_feature_data.columns.get_indexer(
+            self.feature_columns)]).T  # Extract features for the first building
+        self.current_energy_consumption = predict_current_energy_consumption()  # Get the current energy consumption for comparison
 
     def _evaluate(self, X, out, *args):
-        # 初始化目标函数值
+        """
+        Evaluate the objective function for each solution in X.
+
+        Parameters:
+        - X: Array of solutions (each row is a solution with decision variable values).
+        - out: Dictionary to store objective values for each solution.
+        """
+        # Lists to store the objective values (NPV and energy consumption)
         npvs = []
         energies = []
-        constrains = []
+        constrains = []  # Not used, but could be added in the future
 
-
-        # 遍历每个解 X[i]
+        # Evaluate each solution in X
         for x in X:
-            # 决策变量
+            # Extract decision variables from the solution
             wall_level = int(x[0])
             heat_level = int(x[1])
             glazing_level = int(x[2])
             pv_count = int(x[3])
 
-            # 根据当前解的决策变量更新 self.X 中的特征
-            updated_X = self.X.copy()  # 深拷贝，以避免修改原始数据
+            # Update feature data with the current decision variables and predict energy consumption
+            updated_X = self.X.copy()  # Deep copy to avoid modifying original data
             updated_X['WALLS_ENERGY_EFF'] = wall_level
             energy_predictions = region_model_predict(updated_X, self.model).item()
-            energy_saving_transfer_benifit_per_year_wall = ((energy_predictions - self.current_energy_consumption) * Tariff) * self.all_feature_data['TOTAL_FLOOR_AREA']
+            energy_saving_transfer_benifit_per_year_wall = ((
+                                                                    energy_predictions - self.current_energy_consumption) * Tariff) * \
+                                                           self.all_feature_data['TOTAL_FLOOR_AREA']
 
             updated_X = self.X.copy()
             updated_X['MAINHEAT_ENERGY_EFF'] = heat_level
             energy_predictions = region_model_predict(updated_X, self.model).item()
-            energy_saving_transfer_benifit_per_year_heat = ((energy_predictions - self.current_energy_consumption) * Tariff) * self.all_feature_data['TOTAL_FLOOR_AREA']
+            energy_saving_transfer_benifit_per_year_heat = ((
+                                                                    energy_predictions - self.current_energy_consumption) * Tariff) * \
+                                                           self.all_feature_data['TOTAL_FLOOR_AREA']
 
             updated_X = self.X.copy()
             updated_X['GLAZED_TYPE'] = glazing_level
             energy_predictions = region_model_predict(updated_X, self.model).item()
-            energy_saving_transfer_benifit_per_year_glazing = ((energy_predictions-self.current_energy_consumption) * Tariff) * self.all_feature_data['TOTAL_FLOOR_AREA']
+            energy_saving_transfer_benifit_per_year_glazing = ((
+                                                                       energy_predictions - self.current_energy_consumption) * Tariff) * \
+                                                              self.all_feature_data['TOTAL_FLOOR_AREA']
 
-            # 能效预测，传递更新后的特征
-            updated_X = self.X.copy()
-            updated_X['WALLS_ENERGY_EFF'] = wall_level
-            updated_X['MAINHEAT_ENERGY_EFF'] = heat_level
-            updated_X['GLAZED_TYPE'] = glazing_level
-            energy_predictions = region_model_predict(updated_X, self.model).item()
-            # energy_saving_transfer_benifit_per_year =( energy_predictions *  Tariff ) * self.all_feature_data['TOTAL_FLOOR_AREA'] + calculate_epv() * Tariff # 每省下来的能源折算成钱
-
-            # 初始设备成本
+            # Calculate the total cost of the systems
             wall_cost = wall_insulation_costs[wall_level]
             heat_cost = heating_system_costs[heat_level]
             glazing_cost = glazing_costs[glazing_level]
             pv_cost = pv_costs[pv_count]
 
-            toal_inital_cost = wall_cost + heat_cost + glazing_cost + pv_cost
+            total_inital_cost = wall_cost + heat_cost + glazing_cost + pv_cost
 
-            # 设备折现成本：分别计算每个设备的折现成本
+            # Calculate discounted benefits for each system
             discounted_wall_benifit = 0
             for year in range(1, wall_insulation_lifetime + 1):
                 discounted_wall_benifit += energy_saving_transfer_benifit_per_year_wall / ((1 + Discount_rate) ** year)
@@ -216,84 +279,82 @@ class EnergyCostOptimization(Problem):
 
             discounted_glazing_benifit = 0
             for year in range(1, glazing_lifetime + 1):
-                discounted_glazing_benifit += energy_saving_transfer_benifit_per_year_glazing / ((1 + Discount_rate) ** year)
+                discounted_glazing_benifit += energy_saving_transfer_benifit_per_year_glazing / (
+                        (1 + Discount_rate) ** year)
 
             discounted_pv_benifit = 0
-            kWp = 0.32 * pv_count  # 1 kWp
-            latitude = 51.5  # Example latitude for Severn Wales / Severn England
-            orientation = 135  # South
-            tilt = 45 # 45 degrees from horizontal
+            kWp = 0.32 * pv_count  # PV system size
+            latitude = 51.5  # Latitude for Severn Wales
+            orientation = 135  # South orientation
+            tilt = 45  # 45-degree tilt
             annual_solar_radiation = calculate_annual_solar_radiation(14, 'SW')
             for year in range(1, pv_lifetime + 1):
-                discounted_pv_benifit +=  calculate_epv(kWp, latitude, orientation, tilt,annual_solar_radiation) * Tariff / ((1 + Discount_rate) ** year)
+                discounted_pv_benifit += calculate_epv(kWp, latitude, orientation, tilt,
+                                                       annual_solar_radiation) * Tariff / ((1 + Discount_rate) ** year)
 
-            # 总设备折现成本：将所有设备的折现成本相加
-            total_discounted_device_benifit = (discounted_wall_benifit +
-                                            discounted_heat_benifit +
-                                            discounted_glazing_benifit +
-                                            discounted_pv_benifit)
+            # Calculate total discounted benefit
+            total_discounted_device_benifit = (
+                    discounted_wall_benifit + discounted_heat_benifit + discounted_glazing_benifit + discounted_pv_benifit)
 
-            # 总成本 (设备折现成本 + 折现后的电费)
-            total_npv = total_discounted_device_benifit - toal_inital_cost
+            # Total cost: discounted benefits - initial cost
+            total_npv = total_discounted_device_benifit - total_inital_cost
 
-            # 总能源节省
-            total_energy_saving = ((energy_predictions - self.current_energy_consumption) * self.all_feature_data['TOTAL_FLOOR_AREA'] + calculate_epv(kWp, latitude, orientation, tilt,annual_solar_radiation)) / self.all_feature_data['TOTAL_FLOOR_AREA']  # kwh/m2
+            # Calculate total energy savings
+            total_energy_saving = ((energy_predictions - self.current_energy_consumption) * self.all_feature_data[
+                'TOTAL_FLOOR_AREA'] + calculate_epv(kWp, latitude, orientation, tilt, annual_solar_radiation)) / \
+                                  self.all_feature_data['TOTAL_FLOOR_AREA']
 
-            # 保存结果
+            # Append results
             npvs.append(-total_npv)
             energies.append(-total_energy_saving)
 
-            #constrains.append(total_energy_saving)
-
-            # 将结果存储到 out 中，供 NSGA-II 使用
+        # Store the results in the output dictionary for NSGA-II
         out["F"] = np.column_stack([npvs, energies])
-        #out["G"] = np.column_stack([constrains])
-
-
-##############################################NSGA####################################################################
 
 
 if __name__ == "__main__":
-
-    # 创建优化问题
+    """
+    Main entry point for running the NSGA-II optimization algorithm on the energy cost problem.
+    """
+    # Create an optimization problem instance
     problem = EnergyCostOptimization()
 
-    # 定义 NSGA-II 算法
+    # Define the NSGA-II algorithm
     algorithm = NSGA2(pop_size=100)
 
-    # 运行优化
+    # Run the optimization process
     res = minimize(problem,
                    algorithm,
-                   ('n_gen', 20),  # 运行200代
+                   ('n_gen', 20),  # Run for 20 generations
                    verbose=False)
-    # 打印结果
+
+    # Print Pareto-optimal solutions
     print("Pareto-optimal solutions:")
     for sol in res.F:
         print(f"NPV: {-sol[0]:.2f}, Energy: {-sol[1]:.2f}")
 
-    # 打印最优解的决策变量分配
+    # Print decision variable assignments for the optimal solutions
     print("Pareto-optimal solutions (Decision Variables):")
     for i, sol in enumerate(res.X):
-        wall_level = int(sol[0])  # 墙体保温等级
-        heat_level = int(sol[1])  # 供热系统等级
-        glazing_level = int(sol[2])  # 玻璃窗等级
-        pv_count = int(sol[3])  # 光伏数量
+        wall_level = int(sol[0])
+        heat_level = int(sol[1])
+        glazing_level = int(sol[2])
+        pv_count = int(sol[3])
 
     print(f"Solution {i + 1}: Wall Insulation Level: {wall_level}, Heating System Level: {heat_level}, "
           f"Glazing Level: {glazing_level}, PV Count: {pv_count}")
 
-    # 构造 DataFrame 来存储每个解的信息
+    # Create a DataFrame to store the results
     solutions = []
     for i, (decision_vars, objectives) in enumerate(zip(res.X, res.F)):
-        wall_level = int(decision_vars[0])  # 墙体保温等级
-        heat_level = int(decision_vars[1])  # 供热系统等级
-        glazing_level = int(decision_vars[2])  # 玻璃窗等级
-        pv_count = int(decision_vars[3])  # 光伏数量
+        wall_level = int(decision_vars[0])
+        heat_level = int(decision_vars[1])
+        glazing_level = int(decision_vars[2])
+        pv_count = int(decision_vars[3])
 
         cost = -objectives[0]
-        energy = -objectives[1]  # 转为正值表示节能
+        energy = -objectives[1]  # Convert to positive value for energy saving
 
-        # 将每个解的决策变量和目标值存储为字典
         solutions.append({
             "Solution #": i + 1,
             "Wall Insulation Level": wall_level,
@@ -304,10 +365,10 @@ if __name__ == "__main__":
             "Energy Saving": round(energy, 2)
         })
 
-    # 将结果转换为 DataFrame
+    # Convert to DataFrame
     df_solutions = pd.DataFrame(solutions)
 
-    # 使用 Plotly 绘制交互式散点图
+    # Create an interactive plot using Plotly
     fig = px.scatter(
         df_solutions,
         x="NPV",
@@ -318,15 +379,12 @@ if __name__ == "__main__":
         template="plotly_dark"
     )
 
-    # 添加标签
+    # Customize the plot
     fig.update_traces(marker=dict(size=10, color='red'), selector=dict(mode='markers'))
 
-    # 显示图像
+    # Show the plot
     fig.show()
 
+    # Save the plot as an HTML file
     fig.write_html("./pareto_front.html")
     print("Interactive plot saved as 'pareto_front.html'.")
-
-
-
-#############################################################################################################################################
